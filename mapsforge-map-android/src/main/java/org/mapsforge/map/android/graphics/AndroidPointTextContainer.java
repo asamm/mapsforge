@@ -63,13 +63,6 @@ public class AndroidPointTextContainer extends PointTextContainer {
                 alignment = Layout.Alignment.ALIGN_NORMAL;
             }
 
-            // strange Android behaviour: if alignment is set to center, then
-            // text is rendered with right alignment if using StaticLayout
-            frontTextPaint.setTextAlign(android.graphics.Paint.Align.LEFT);
-            if (this.paintBack != null) {
-                backTextPaint.setTextAlign(android.graphics.Paint.Align.LEFT);
-            }
-
             frontLayout = createTextLayout(frontTextPaint, alignment);
             backLayout = null;
             if (this.paintBack != null) {
