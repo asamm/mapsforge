@@ -50,7 +50,6 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
 import gnu.trove.map.hash.TShortIntHashMap;
-import gnu.trove.procedure.TShortIntProcedure;
 import gnu.trove.set.hash.TShortHashSet;
 
 /**
@@ -240,10 +239,10 @@ public final class OSMTagMapping {
                     if (overriddenNode instanceof Element) {
                         String keyOverridden = overriddenNode.getAttributes().getNamedItem("key").getTextContent();
                         String valueOverridden = overriddenNode.getAttributes().getNamedItem("value").getTextContent();
-                        Set<String> s = tmpPoiZoomOverrides.get(Short.valueOf(this.poiID));
+                        Set<String> s = tmpPoiZoomOverrides.get(this.poiID);
                         if (s == null) {
                             s = new HashSet<>();
-                            tmpPoiZoomOverrides.put(Short.valueOf(this.poiID), s);
+                            tmpPoiZoomOverrides.put(this.poiID, s);
                         }
                         s.add(OSMTag.tagKey(keyOverridden, valueOverridden));
                     }
@@ -290,10 +289,10 @@ public final class OSMTagMapping {
                     if (overriddenNode instanceof Element) {
                         String keyOverridden = overriddenNode.getAttributes().getNamedItem("key").getTextContent();
                         String valueOverridden = overriddenNode.getAttributes().getNamedItem("value").getTextContent();
-                        Set<String> s = tmpWayZoomOverrides.get(Short.valueOf(this.wayID));
+                        Set<String> s = tmpWayZoomOverrides.get(this.wayID);
                         if (s == null) {
                             s = new HashSet<>();
-                            tmpWayZoomOverrides.put(Short.valueOf(this.wayID), s);
+                            tmpWayZoomOverrides.put(this.wayID, s);
                         }
                         s.add(OSMTag.tagKey(keyOverridden, valueOverridden));
                     }
@@ -333,14 +332,8 @@ public final class OSMTagMapping {
         } catch (SAXParseException spe) {
             LOGGER.severe("\n** Parsing error, line " + spe.getLineNumber() + ", uri " + spe.getSystemId());
             throw new IllegalStateException(spe);
-        } catch (SAXException sxe) {
+        } catch (SAXException | ParserConfigurationException | IOException | XPathExpressionException sxe) {
             throw new IllegalStateException(sxe);
-        } catch (ParserConfigurationException pce) {
-            throw new IllegalStateException(pce);
-        } catch (IOException ioe) {
-            throw new IllegalStateException(ioe);
-        } catch (XPathExpressionException e) {
-            throw new IllegalStateException(e);
         }
     }
 
@@ -349,17 +342,18 @@ public final class OSMTagMapping {
             LOGGER.warning("duplicate osm-tag found in tag-mapping configuration (ignoring): " + osmTag);
             return false;
         }
-        LOGGER.finest("adding poi: " + osmTag);
+        LOGGER.info("adding poi: " + osmTag);
         this.stringToPoiTag.put(osmTag.tagKey(), osmTag);
         if (equivalentValues != null) {
             for (String equivalentValue : equivalentValues) {
+                LOGGER.info("adding poi eq, key: " + OSMTag.tagKey(osmTag.getKey(), equivalentValue));
                 this.stringToPoiTag.put(OSMTag.tagKey(osmTag.getKey(), equivalentValue), osmTag);
             }
         }
-        this.idToPoiTag.put(Short.valueOf(this.poiID), osmTag);
+        this.idToPoiTag.put(this.poiID, osmTag);
 
         // also fill optimization mapping with identity
-        this.optimizedPoiIds.put(Short.valueOf(this.poiID), Short.valueOf(this.poiID));
+        this.optimizedPoiIds.put(this.poiID, this.poiID);
 
         return true;
     }
@@ -376,10 +370,10 @@ public final class OSMTagMapping {
                 this.stringToWayTag.put(OSMTag.tagKey(osmTag.getKey(), equivalentValue), osmTag);
             }
         }
-        this.idToWayTag.put(Short.valueOf(this.wayID), osmTag);
+        this.idToWayTag.put(this.wayID, osmTag);
 
         // also fill optimization mapping with identity
-        this.optimizedWayIds.put(Short.valueOf(this.wayID), Short.valueOf(this.wayID));
+        this.optimizedWayIds.put(this.wayID, this.wayID);
 
         return true;
     }
@@ -403,7 +397,7 @@ public final class OSMTagMapping {
      * @return the corresponding {@link OSMTag}
      */
     public OSMTag getPoiTag(short id) {
-        return this.idToPoiTag.get(Short.valueOf(id));
+        return this.idToPoiTag.get(id);
     }
 
     /**
@@ -412,27 +406,7 @@ public final class OSMTagMapping {
      * @return the corresponding {@link OSMTag}
      */
     public OSMTag getPoiTag(String key, String value) {
-        OSMTag tag = this.stringToPoiTag.get(OSMTag.tagKey(key, value));
-        if (tag != null) {
-            return tag;
-        }
-        if (!this.tagValues) {
-            return null;
-        }
-        String vType = OSMUtils.getValueType(key, value);
-        if (vType.charAt(1) != 's') {
-            tag = this.stringToPoiTag.get(OSMTag.tagKey(key, "%f"));
-            if (tag == null) {
-                return null;
-            }
-            tag = getPoiTagAlternative(key, vType, tag);
-        } else {
-            tag = this.stringToPoiTag.get(OSMTag.tagKey(key, vType));
-            if (tag != null) {
-                LOGGER.fine(key + ":\t" + value);
-            }
-        }
-        return tag;
+        return getTag(key, value, stringToPoiTag, this::getPoiTagAlternative);
     }
 
     private OSMTag getPoiTagAlternative(String key, String value, OSMTag original) {
@@ -466,7 +440,7 @@ public final class OSMTagMapping {
      * @return the corresponding {@link OSMTag}
      */
     public OSMTag getWayTag(short id) {
-        return this.idToWayTag.get(Short.valueOf(id));
+        return this.idToWayTag.get(id);
     }
 
     // /**
@@ -490,27 +464,7 @@ public final class OSMTagMapping {
      * @return the corresponding {@link OSMTag}
      */
     public OSMTag getWayTag(String key, String value) {
-        OSMTag tag = this.stringToWayTag.get(OSMTag.tagKey(key, value));
-        if (tag != null) {
-            return tag;
-        }
-        if (!this.tagValues) {
-            return null;
-        }
-        String vType = OSMUtils.getValueType(key, value);
-        if (vType.charAt(1) != 's') {
-            tag = this.stringToWayTag.get(OSMTag.tagKey(key, "%f"));
-            if (tag == null) {
-                return null;
-            }
-            tag = getWayTagAlternative(key, vType, tag);
-        } else {
-            tag = this.stringToWayTag.get(OSMTag.tagKey(key, vType));
-            if (tag != null) {
-                LOGGER.fine(key + ":\t" + value);
-            }
-        }
-        return tag;
+        return getTag(key, value, stringToWayTag, this::getWayTagAlternative);
     }
 
     private OSMTag getWayTagAlternative(String key, String value, OSMTag original) {
@@ -544,7 +498,7 @@ public final class OSMTagMapping {
      * @return the minimum zoom level of all tags in the tag set
      */
     public byte getZoomAppearPOI(Set<Short> tagSet) {
-        if (tagSet == null || tagSet.size() == 0) {
+        if (tagSet == null || tagSet.isEmpty()) {
             return Byte.MAX_VALUE;
         }
 
@@ -552,7 +506,7 @@ public final class OSMTagMapping {
 
         if (!this.poiZoomOverrides.isEmpty()) {
             for (short s : tagSet) {
-                Set<OSMTag> overriddenTags = this.poiZoomOverrides.get(Short.valueOf(s));
+                Set<OSMTag> overriddenTags = this.poiZoomOverrides.get(s);
                 if (overriddenTags != null) {
                     for (OSMTag osmTag : overriddenTags) {
                         tmp.remove(osmTag.getId());
@@ -563,16 +517,15 @@ public final class OSMTagMapping {
             if (tmp.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
                 for (short s : tagSet) {
-                    sb.append(this.idToPoiTag.get(Short.valueOf(s)).tagKey() + "; ");
+                    sb.append(this.idToPoiTag.get(s).tagKey()).append("; ");
                 }
-                LOGGER.severe("ERROR: You have a cycle in your zoom-override definitions. Look for these tags: "
-                        + sb.toString());
+                LOGGER.severe("ERROR: You have a cycle in your zoom-override definitions. Look for these tags: " + sb);
             }
         }
 
         byte zoomAppear = Byte.MAX_VALUE;
         for (short s : tmp.toArray()) {
-            OSMTag tag = this.idToPoiTag.get(Short.valueOf(s));
+            OSMTag tag = this.idToPoiTag.get(s);
             if (tag.isRenderable()) {
                 zoomAppear = (byte) Math.min(zoomAppear, tag.getZoomAppear());
             }
@@ -586,7 +539,7 @@ public final class OSMTagMapping {
      * @return the minimum zoom level of all the tags in the set
      */
     public byte getZoomAppearWay(Set<Short> tagSet) {
-        if (tagSet == null || tagSet.size() == 0) {
+        if (tagSet == null || tagSet.isEmpty()) {
             return Byte.MAX_VALUE;
         }
 
@@ -594,7 +547,7 @@ public final class OSMTagMapping {
 
         if (!this.wayZoomOverrides.isEmpty()) {
             for (short s : tagSet) {
-                Set<OSMTag> overriddenTags = this.wayZoomOverrides.get(Short.valueOf(s));
+                Set<OSMTag> overriddenTags = this.wayZoomOverrides.get(s);
                 if (overriddenTags != null) {
                     for (OSMTag osmTag : overriddenTags) {
                         tmp.remove(osmTag.getId());
@@ -605,15 +558,15 @@ public final class OSMTagMapping {
             if (tmp.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
                 for (short s : tagSet) {
-                    sb.append(this.idToWayTag.get(Short.valueOf(s)).tagKey() + "; ");
+                    sb.append(this.idToWayTag.get(s).tagKey()).append("; ");
                 }
                 LOGGER.severe("ERROR: You have a cycle in your zoom-override definitions. Look for these tags: "
-                        + sb.toString());
+                        + sb);
             }
         }
         byte zoomAppear = Byte.MAX_VALUE;
         for (short s : tmp.toArray()) {
-            OSMTag tag = this.idToWayTag.get(Short.valueOf(s));
+            OSMTag tag = this.idToWayTag.get(s);
             if (tag.isRenderable()) {
                 zoomAppear = (byte) Math.min(zoomAppear, tag.getZoomAppear());
             }
@@ -629,20 +582,17 @@ public final class OSMTagMapping {
         this.optimizedPoiIds.clear();
         final TreeSet<HistogramEntry> poiOrdering = new TreeSet<>();
 
-        histogram.forEachEntry(new TShortIntProcedure() {
-            @Override
-            public boolean execute(short tag, int amount) {
-                poiOrdering.add(new HistogramEntry(tag, amount));
-                return true;
-            }
+        histogram.forEachEntry((tag, amount) -> {
+            poiOrdering.add(new HistogramEntry(tag, amount));
+            return true;
         });
 
         short tmpPoiID = 0;
 
-        OSMTag currentTag = null;
+        OSMTag currentTag;
         for (HistogramEntry histogramEntry : poiOrdering.descendingSet()) {
-            currentTag = this.idToPoiTag.get(Short.valueOf(histogramEntry.id));
-            this.optimizedPoiIds.put(Short.valueOf(histogramEntry.id), Short.valueOf(tmpPoiID));
+            currentTag = this.idToPoiTag.get(histogramEntry.id);
+            this.optimizedPoiIds.put(histogramEntry.id, tmpPoiID);
             LOGGER.finer("adding poi tag: " + currentTag.tagKey() + " id:" + tmpPoiID + " amount: "
                     + histogramEntry.amount);
             tmpPoiID++;
@@ -656,23 +606,66 @@ public final class OSMTagMapping {
         this.optimizedWayIds.clear();
         final TreeSet<HistogramEntry> wayOrdering = new TreeSet<>();
 
-        histogram.forEachEntry(new TShortIntProcedure() {
-            @Override
-            public boolean execute(short tag, int amount) {
-                wayOrdering.add(new HistogramEntry(tag, amount));
-                return true;
-            }
+        histogram.forEachEntry((tag, amount) -> {
+            wayOrdering.add(new HistogramEntry(tag, amount));
+            return true;
         });
         short tmpWayID = 0;
 
-        OSMTag currentTag = null;
+        OSMTag currentTag;
         for (HistogramEntry histogramEntry : wayOrdering.descendingSet()) {
-            currentTag = this.idToWayTag.get(Short.valueOf(histogramEntry.id));
-            this.optimizedWayIds.put(Short.valueOf(histogramEntry.id), Short.valueOf(tmpWayID));
+            currentTag = this.idToWayTag.get(histogramEntry.id);
+            this.optimizedWayIds.put(histogramEntry.id, tmpWayID);
             LOGGER.finer("adding way tag: " + currentTag.tagKey() + " id:" + tmpWayID + " amount: "
                     + histogramEntry.amount);
             tmpWayID++;
         }
+    }
+
+    public interface GetTagAlternative {
+
+        OSMTag get(String key, String value, OSMTag original);
+    }
+
+    /**
+     * @param key   the key
+     * @param value the value
+     * @return the corresponding {@link OSMTag}
+     */
+    private OSMTag getTag(String key, String value, Map<String, OSMTag> tags, GetTagAlternative tagAlternative) {
+        OSMTag tag = tags.get(OSMTag.tagKey(key, value));
+        //System.out.println("  getTag(" + key + ", " + value + "), tag: " + tag + ", tagValues: " + tagValues + ", vType: " + OSMUtils.getValueType(key, value));
+        //tags.forEach((s, osmTag) -> System.out.println("    stringToPoiTag: " + s + ", " + osmTag));
+        if (tag != null) {
+            return tag;
+        }
+        if (!this.tagValues) {
+            return null;
+        }
+        OSMUtils.ValueType vType = OSMUtils.getValueType(key, value);
+        switch(vType) {
+            case NUMBER:
+                tag = tags.get(OSMTag.tagKey(key, "%i"));
+                if (tag == null) {
+                    tag = tags.get(OSMTag.tagKey(key, "%h"));
+                }
+                if (tag == null) {
+                    tag = tags.get(OSMTag.tagKey(key, "%f"));
+                }
+                if (tag == null) {
+                    tag = tags.get(OSMTag.tagKey(key, "%b"));
+                }
+                break;
+            case TEXT:
+                tag = tags.get(OSMTag.tagKey(key, "%f"));
+                if (tag == null) {
+                    return null;
+                }
+                tag = tagAlternative.get(key, "%s", tag);
+                break;
+        }
+        //System.out.println("  getTag(" + key + ", " + value + "), found: " + tag);
+        return tag;
     }
 
     /**

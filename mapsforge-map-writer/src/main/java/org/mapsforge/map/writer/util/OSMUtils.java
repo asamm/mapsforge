@@ -51,6 +51,20 @@ public final class OSMUtils {
     private static int nBytes, nFloats, nIntegers, nShorts, nStrings = 0;
 
     /**
+     * Type of the variable stored in the key/value pair.
+     */
+    public enum ValueType {
+        /**
+         * Number value. May be "byte", "short", "integer", "float".
+         */
+        NUMBER,
+        /**
+         * Plain text value (also used as fallback).
+         */
+        TEXT
+    }
+
+    /**
      * Extracts known POI tags and returns their ids.
      *
      * @param entity the node
@@ -143,7 +157,7 @@ public final class OSMUtils {
 
                 // Check rest preferred languages for falling back to base
                 if (!restPreferredLanguages.isEmpty()) {
-                    Map<String, String> fallbacks = new HashMap<String, String>();
+                    Map<String, String> fallbacks = new HashMap<>();
                     for (String preferredLanguage : restPreferredLanguages) {
                         for (int i = 0, n = tags.size(); i < n; i++) {
                             Tag tag = tags.get(i);
@@ -317,30 +331,24 @@ public final class OSMUtils {
     }
 
     /**
+     * Get type of the value stored in the variable.
+     *
      * @param value string represented value
      * @return a string represented primitive type
      */
-    public static String getValueType(String key, String value) {
+    public static ValueType getValueType(String key, String value) {
         Double f = OSMUtils.parseDoubleUnit(value);
         if (f != null) {
-            if (Math.round(f) == f) {
-                if (f.byteValue() == f) {
-                    return "%b";
-                } else if (f.shortValue() == f) {
-                    return "%h";
-                } else {
-                    return "%i";
-                }
-            }
-            return "%f";
+            return ValueType.NUMBER;
         }
+
         if (key.contains("colour")) {
             Matcher matcher = COLOR_PATTERN.matcher(value); // Encode color as integer
             if (matcher.matches() || ColorsCSS.get(value) != null) {
-                return "%i";
+                return ValueType.NUMBER;
             }
         }
-        return "%s";
+        return ValueType.TEXT;
     }
 
     /**
