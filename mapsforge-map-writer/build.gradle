@@ -3,9 +3,10 @@ apply plugin: 'maven-publish'
 
 dependencies {
     implementation project(":mapsforge-core")
-    implementation 'com.google.guava:guava:28.1-jre'
+    implementation 'com.google.guava:guava:33.0.0-jre'
+
     implementation 'net.sf.trove4j:trove4j:3.0.3'
-    implementation 'org.locationtech.jts:jts-core:1.16.1'
+    implementation 'org.locationtech.jts:jts-core:1.20.0'
     compileOnly 'org.openstreetmap.osmosis:osmosis-core:0.47'
     testImplementation "junit:junit:$jUnitVersion"
 }
@@ -16,15 +17,14 @@ sourceSets.test.runtimeClasspath += configurations.compileClasspath - configurat
 jar {
     from('src/main/config/') {
         filter {
-            line -> line.replace('${mapfile.writer.version}', version)
+            line -> line.replace('${mapfile.writer.version}', project.version)
         }
     }
 }
 
-tasks.register('fatJar', Jar) {
-    dependsOn configurations.runtimeClasspath
+task fatJar(type: Jar, dependsOn: configurations.runtimeClasspath) {
     archiveClassifier = 'jar-with-dependencies'
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    duplicatesStrategy DuplicatesStrategy.INCLUDE
     from {
         configurations.runtimeClasspath.collect {
             it.isDirectory() ? it : zipTree(it)
@@ -45,5 +45,67 @@ publishing {
 if (project.hasProperty("SONATYPE_USERNAME")) {
     afterEvaluate {
         project.apply from: "${rootProject.projectDir}/deploy.gradle"
+    }
+}
+
+// ASAMM
+
+tasks.register('map-writer-test', Jar) {
+    group("asamm")
+    dependsOn configurations.runtimeClasspath
+    archiveClassifier = 'jar-with-dependencies'
+    duplicatesStrategy DuplicatesStrategy.INCLUDE
+    from {
+        configurations.runtimeClasspath.collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+    with jar
+
+    doLast {
+        // define the destination directory
+        def osmosisDir = file("${file("$buildDir").parentFile.parentFile.canonicalPath}/_asamm/generator/osmosis-0.49.2")
+        def pluginsDir = file("${osmosisDir.canonicalPath}/plugins")
+        System.out.println("osmosisDir: " + osmosisDir)
+
+        // Copy the generated JAR to the target directory
+        copy {
+            from archiveFile
+            into pluginsDir
+        }
+
+        // execute a command line command
+        try {
+            exec {
+                commandLine 'echo', "JAR file copied to $pluginsDir"
+                workingDir osmosisDir
+                commandLine 'cmd', '/c', 'bin\\osmosis.bat',
+                        '--read-pbf', 'slovakia.osm.pbf',
+                        '--mapfile-writer', 'file=slovakia.osm.map',
+                        'bbox=47.65404,16.69341,49.68457,22.71482',
+//                        '--read-pbf', 'zeeland.osm.pbf',
+//                        '--mapfile-writer', 'file=zeeland.osm.map',
+//                        'bbox=51.13838,3.279303,51.79291,4.399579',
+                        'type=ram', 'preferred-languages=en,zxx',
+//                        'threads=24',
+                        'tag-conf-file=tag-mapping-tourist.xml',
+//                        'zoom-interval-conf=3,0,5,7,6,7,9,8,9,11,10,11,15,12,21',
+                        'simplification-factor=0.5',
+                        'bbox-enlargement=5',
+                        'label-position=true',
+                        'tag-values=true'
+            }
+        } catch (Exception e) {
+            println "Error: The command failed with a non-zero exit code."
+            println "Working Directory: ${workingDirectory.absolutePath}"
+            println "Command: cmd /c your-script.bat"
+            println "Exception Message: ${e.message}"
+
+            // Optionally print stack trace for debugging
+            e.printStackTrace()
+
+            // You can also fail the build explicitly if needed
+            throw new GradleException("Execution of batch script failed. See logs for details.")
+        }
     }
 }
